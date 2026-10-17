@@ -1,0 +1,111 @@
+name: Windows desktop release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install application, test, OCR, and build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[dev,documents,ocr,build]"
+
+      - name: Run offline tests
+        run: python -m pytest -q
+
+      - name: Prepare the app icon
+        run: python packaging/prepare_icon.py
+
+      - name: Build the Windows app
+        run: pyinstaller --noconfirm --clean packaging/task-runner.spec
+
+      - name: Smoke-test the packaged GUI executable
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path "dist/task-runner/task-runner.exe").Path
+          $appDir = (Resolve-Path "dist/task-runner").Path
+          $process = Start-Process -FilePath $exe -WorkingDirectory $appDir -PassThru
+          Start-Sleep -Seconds 5
+          $process.Refresh()
+          if ($process.HasExited) {
+            throw "task-runner.exe exited during startup (exit code $($process.ExitCode))."
+          }
+          Stop-Process -Id $process.Id -Force
+          Wait-Process -Id $process.Id -ErrorAction SilentlyContinue
+
+      - name: Sign executable when a trusted certificate is configured
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_CERTIFICATE_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PFX_BASE64 }}
+          WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          $hasCertificate = -not [string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_CERTIFICATE_PFX_BASE64)
+          $hasPassword = -not [string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD)
+          if (-not $hasCertificate -and -not $hasPassword) {
+            Write-Host "Signing secrets are not configured; this build will remain unsigned."
+            exit 0
+          }
+          if (-not $hasCertificate -or -not $hasPassword) {
+            throw "Configure both WINDOWS_SIGNING_CERTIFICATE_PFX_BASE64 and WINDOWS_SIGNING_CERTIFICATE_PASSWORD, or neither."
+          }
+
+          $kitsRoot = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin"
+          $signTool = Get-ChildItem -Path $kitsRoot -Filter signtool.exe -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match "\\x64\\signtool\.exe$" } |
+            Sort-Object { [version]$_.Directory.Parent.Name } -Descending |
+            Select-Object -First 1
+          if (-not $signTool) { throw "Windows SDK SignTool was not found on the build runner." }
+
+          $certificatePath = Join-Path $env:RUNNER_TEMP "task-runner-signing.pfx"
+          try {
+            $certificateBytes = [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERTIFICATE_PFX_BASE64)
+            [IO.File]::WriteAllBytes($certificatePath, $certificateBytes)
+            $exe = (Resolve-Path "dist/task-runner/task-runner.exe").Path
+            & $signTool.FullName sign /fd SHA256 /tr "http://timestamp.digicert.com" /td SHA256 /f $certificatePath /p $env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD $exe
+            if ($LASTEXITCODE -ne 0) { throw "SignTool failed to sign task-runner.exe (exit code $LASTEXITCODE)." }
+            & $signTool.FullName verify /pa /v $exe
+            if ($LASTEXITCODE -ne 0) { throw "The task-runner.exe signature did not verify (exit code $LASTEXITCODE)." }
+          }
+          finally {
+            Remove-Item $certificatePath -Force -ErrorAction SilentlyContinue
+            Remove-Variable certificateBytes -ErrorAction SilentlyContinue
+          }
+
+      - name: Add release instructions and notices
+        shell: pwsh
+        run: |
+          Copy-Item packaging/README-WINDOWS.txt dist/task-runner/README.txt
+          Copy-Item LICENSE dist/task-runner/LICENSE
+          Copy-Item THIRD_PARTY_NOTICES.txt dist/task-runner/THIRD_PARTY_NOTICES.txt
+          Compress-Archive -Path dist/task-runner -DestinationPath dist/task-runner-windows-x64.zip -Force
+
+      - name: Upload Windows build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: task-runner-windows-x64
+          path: dist/task-runner-windows-x64.zip
+          if-no-files-found: error
+
+      - name: Publish GitHub Release asset
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/task-runner-windows-x64.zip
+          generate_release_notes: true

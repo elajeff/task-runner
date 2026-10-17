@@ -1,0 +1,31 @@
+# Local settings and credentials
+.env
+.env.*
+!.env.example
+
+# Python environments and generated files
+.venv/
+.venv*/
+venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+build-windows.log
+
+# Local signing material (never commit private certificates)
+*.pfx
+*.p12
+*.pfx.base64
+
+# Local runtime data and backups
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/backups/
+workspace/*
+!workspace/.gitkeep
+!workspace/notes.txt.example
+.runtime-locks/

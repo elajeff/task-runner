@@ -1,0 +1,26 @@
+task runner third-party notices
+===============================
+
+task runner source code is licensed under Apache License 2.0; see LICENSE.
+The Windows release bundles third-party Python libraries. Their licenses remain
+applicable to those libraries. Consult their upstream projects for complete and
+current license texts and notices:
+
+- PyInstaller: https://github.com/pyinstaller/pyinstaller
+- Google Gen AI SDK: https://github.com/googleapis/python-genai
+- OpenAI Python SDK: https://github.com/openai/openai-python
+- Anthropic Python SDK: https://github.com/anthropics/anthropic-sdk-python
+- python-dotenv: https://github.com/theskumar/python-dotenv
+- filelock: https://github.com/tox-dev/filelock
+- Mistune (BSD-3-Clause; Markdown rendering for the local results preview): https://github.com/lepture/mistune
+- pdfplumber: https://github.com/jsvine/pdfplumber
+- python-docx: https://github.com/python-openxml/python-docx
+- openpyxl: https://foss.heptapod.net/openpyxl/openpyxl
+- Indra OCR: https://github.com/datalab-to/indra
+
+Indra OCR may download model weights on first use. The model weights are subject to
+their separate model license; review the model card before using them:
+https://huggingface.co/datalab-to/indra-ocr
+
+task runner does not bundle user API keys, local .env files, databases, or workspace
+contents in the release archive.

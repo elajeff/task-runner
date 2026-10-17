@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=77.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "task-runner"
+version = "0.1.0"
+description = "task runner: local document extraction, AI-assisted outputs, and recoverable multi-file tasks"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = [
+    "google-genai>=1.30.0",
+    "openai>=1.100.0",
+    "anthropic>=0.50.0",
+    "python-dotenv>=1.1.0",
+    "filelock>=3.13.0",
+    "mistune>=3.1,<4",
+]
+
+[project.scripts]
+task-runner = "runtime.cli:main"
+task-runner-gui = "runtime.gui:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+documents = [
+    "pdfplumber>=0.11.0",
+    "python-docx>=1.1.2",
+    "openpyxl>=3.1.5",
+]
+ocr = [
+    "pdfplumber>=0.11.0",
+    "python-docx>=1.1.2",
+    "openpyxl>=3.1.5",
+    "indra-ocr>=0.3.2,<0.4",
+]
+build = ["pyinstaller>=6.22,<7", "pillow>=10,<13"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["runtime*"]
+exclude = ["tests*", "workspace*"]
+namespaces = false
