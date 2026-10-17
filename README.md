@@ -20,9 +20,9 @@ If a Windows release is not published yet, the GitHub Actions workflow must comp
 
 1. Install 64-bit Python 3.13.
 2. Extract or clone this repository.
-3. Double-click `packaging\build-windows.bat`. On the first run, it downloads the supplied app image from Imgur if `assets\task-runner-icon.jpg` is missing, then creates `assets\task-runner.ico`. The icon is used for the executable, window title bar, and taskbar.
+3. Double-click `packaging\build-windows.bat`. On the first run, it downloads the supplied app image from Imgur if both `assets\task-runner-icon.png` and `assets\task-runner-icon.jpg` are missing, then creates `assets\task-runner.ico`. The icon is used for the executable, window title bar, and taskbar.
 4. When it succeeds, the ready-to-distribute bundle is `dist\task-runner-windows-x64.zip`.
-5. Keep the generated `assets\task-runner-icon.jpg` and `assets\task-runner.ico` in the source repository so the release workflow uses the same icon. If the Imgur address returns a webpage instead of an image, save the actual image from your browser as `assets\task-runner-icon.jpg` and rerun the build.
+5. Keep your `assets\task-runner-icon.png` (preferred) and the generated `assets\task-runner.ico` in the source repository so the release workflow uses the same icon. If the Imgur address returns a webpage instead of an image, save the actual image from your browser as `assets\task-runner-icon.png` and rerun the build.
 
 You **can** upload that ZIP to a GitHub Release for users to download; they do not have to build the project themselves. Do not commit the generated `dist/` output or executable into the normal source branch. GitHub Releases are the appropriate place for binary downloads. For releases that use SignPath Foundation signing, use the approved SignPath integration with the trusted GitHub Actions build rather than uploading a locally built binary for signing, because SignPath verifies the binary's build origin.
 
@@ -33,12 +33,12 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The workflow runs tests, builds the Windows bundle with PyInstaller, smoke-tests the GUI executable, and attaches the ZIP to the tagged release. The first Windows build must pass before distributing the release. A local build is useful for checking packaging; it is not evidence that the GitHub release workflow or code signing has passed. The repository should contain `assets/task-runner-icon.jpg` and `assets/task-runner.ico` after the first successful local build so releases do not depend on a live Imgur download.
+The workflow runs tests, builds the Windows bundle with PyInstaller, smoke-tests the GUI executable, and attaches the ZIP to the tagged release. The first Windows build must pass before distributing the release. A local build is useful for checking packaging; it is not evidence that the GitHub release workflow or code signing has passed. The repository should contain `assets/task-runner-icon.png` and `assets/task-runner.ico` after the first successful local build. Existing JPG source images are still supported so releases do not depend on a live Imgur download.
 
 ### First publication to GitHub
 
 1. Extract this project into a folder named `task-runner` and open PowerShell in that folder (File Explorer address bar → type `powershell` → Enter).
-2. Double-click `packaging\build-windows.bat` once so the icon is downloaded/generated and the Windows bundle can be tested. If successful, keep `assets\task-runner-icon.jpg` and `assets\task-runner.ico` for the repository.
+2. Double-click `packaging\build-windows.bat` once so the icon is downloaded/generated and the Windows bundle can be tested. If successful, keep `assets\task-runner-icon.png` and `assets\task-runner.ico` for the repository.
 3. Create an **empty** public repository named `task-runner` on GitHub. Do not have GitHub add a README or license, because they already exist here.
 4. In PowerShell, run the following commands, replacing the URL with your repository's HTTPS URL:
 

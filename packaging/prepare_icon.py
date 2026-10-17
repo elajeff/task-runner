@@ -1,4 +1,4 @@
-"""Download the chosen app image (if needed) and make the Windows icon."""
+"""Create the Windows icon from the project's supplied image."""
 
 from __future__ import annotations
 
@@ -11,7 +11,8 @@ from PIL import Image, ImageOps
 
 ROOT = Path(__file__).resolve().parent.parent
 ASSET_DIR = ROOT / "assets"
-SOURCE_IMAGE = ASSET_DIR / "task-runner-icon.jpg"
+PNG_SOURCE = ASSET_DIR / "task-runner-icon.png"
+JPG_SOURCE = ASSET_DIR / "task-runner-icon.jpg"
 ICON_FILE = ASSET_DIR / "task-runner.ico"
 IMAGE_URL = "https://i.imgur.com/rgNSMeV.jpg"
 MAX_IMAGE_BYTES = 12 * 1024 * 1024
@@ -31,7 +32,8 @@ def _download_source_image() -> bytes:
         raise RuntimeError(
             f"Could not download the task runner icon from {IMAGE_URL}. "
             "Check the connection, or save the image manually as "
-            "assets/task-runner-icon.jpg and run the build again."
+            "assets/task-runner-icon.png (preferred) or "
+            "assets/task-runner-icon.jpg, then run the build again."
         ) from exc
 
     if len(image_data) > MAX_IMAGE_BYTES:
@@ -43,35 +45,50 @@ def _download_source_image() -> bytes:
         raise RuntimeError(
             f"The URL did not return image data (received {content_type or 'an unknown content type'}). "
             "Open the image in your browser and save the actual image as "
-            "assets/task-runner-icon.jpg, then run the build again."
+            "assets/task-runner-icon.png, then run the build again."
         ) from exc
     return image_data
 
 
+def _source_image_path() -> Path:
+    """Prefer the supplied PNG; retain JPG support for older checkouts."""
+    if PNG_SOURCE.is_file():
+        return PNG_SOURCE
+    if JPG_SOURCE.is_file():
+        return JPG_SOURCE
+
+    JPG_SOURCE.write_bytes(_download_source_image())
+    return JPG_SOURCE
+
+
 def prepare_icon() -> Path:
     ASSET_DIR.mkdir(parents=True, exist_ok=True)
-    if not SOURCE_IMAGE.is_file():
-        SOURCE_IMAGE.write_bytes(_download_source_image())
+    source_image = _source_image_path()
 
     try:
-        with Image.open(SOURCE_IMAGE) as image:
+        with Image.open(source_image) as image:
             image.load()
-            image = ImageOps.exif_transpose(image).convert("RGB")
-            # A square crop gives Windows consistent artwork at taskbar sizes.
+            # Keep PNG transparency so transparent icon backgrounds stay transparent.
+            image = ImageOps.exif_transpose(image).convert("RGBA")
             icon_image = ImageOps.fit(
                 image,
                 (256, 256),
                 method=Image.Resampling.LANCZOS,
                 centering=(0.5, 0.5),
             )
-            icon_image.save(ICON_FILE, format="ICO", sizes=[(size, size) for size in ICON_SIZES])
+            icon_image.save(
+                ICON_FILE,
+                format="ICO",
+                sizes=[(size, size) for size in ICON_SIZES],
+            )
     except Exception as exc:
         raise RuntimeError(
-            f"Could not convert {SOURCE_IMAGE} into a Windows icon. "
-            "Replace it with a valid JPG, PNG, or WEBP image and retry."
+            f"Could not convert {source_image} into a Windows icon. "
+            "Use a valid PNG or JPG at assets/task-runner-icon.png or "
+            "assets/task-runner-icon.jpg and retry."
         ) from exc
 
-    print(f"App icon source: {SOURCE_IMAGE}")
+    print(f"App icon source: {source_image}")
     print(f"Windows icon created: {ICON_FILE}")
     return ICON_FILE
 
