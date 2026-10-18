@@ -367,27 +367,43 @@ def _xlsx_extract(path: Path) -> tuple[list[tuple[int, str]], list[str]]:
 
 
 def _page_text_with_tables(page: object, tables: list[object]) -> str:
-    """Keep normal text readable while excluding table cells from the prose."""
+    """Keep prose around detected tables without re-reading boundary rows."""
     if not tables:
         return (page.extract_text() or "").strip()
 
     table_bounds = [tuple(float(value) for value in table.bbox) for table in tables]
 
-    def outside_table(character: dict) -> bool:
+    def center(character: dict) -> tuple[float, float]:
+        return (
+            (float(character.get("x0", 0)) + float(character.get("x1", 0))) / 2,
+            (float(character.get("top", 0)) + float(character.get("bottom", 0))) / 2,
+        )
+
+    def is_outside_tables(character: dict) -> bool:
         if character.get("object_type") != "char":
             return True
-        center_x = (float(character.get("x0", 0)) + float(character.get("x1", 0))) / 2
-        center_y = (float(character.get("top", 0)) + float(character.get("bottom", 0))) / 2
+        center_x, center_y = center(character)
         return not any(
             left <= center_x <= right and top <= center_y <= bottom
             for left, top, right, bottom in table_bounds
         )
 
-    # Tables on the same vertical band (such as two side-by-side tables) are
-    # grouped so surrounding text is only extracted once.
+    def extract_band(top: float, bottom: float, *, outside_tables: bool = False) -> str:
+        """Filter the original page, not a cropped page with shifted coordinates."""
+        def in_band(item: dict) -> bool:
+            if item.get("object_type") != "char":
+                return True
+            _, center_y = center(item)
+            if not (top <= center_y < bottom):
+                return False
+            return not outside_tables or is_outside_tables(item)
+
+        return (page.filter(in_band).extract_text() or "").strip()
+
+    # Group tables sharing a vertical band (for example, two side-by-side tables).
     groups: list[list[object]] = []
     group_bottom = -1.0
-    for table in tables:
+    for table in sorted(tables, key=lambda item: (item.bbox[1], item.bbox[0])):
         top, bottom = float(table.bbox[1]), float(table.bbox[3])
         if not groups or top > group_bottom + 1:
             groups.append([table])
@@ -402,31 +418,25 @@ def _page_text_with_tables(page: object, tables: list[object]) -> str:
         top = min(float(table.bbox[1]) for table in group)
         bottom = max(float(table.bbox[3]) for table in group)
         if top > cursor_y:
-            # This crop ends at the table's top boundary, so it cannot contain
-            # table cells. Avoid a redundant filter here: character coordinates
-            # from cropped pages can vary across pdfplumber releases, and this
-            # filter can incorrectly remove nearby prose.
-            before = page.crop((0, cursor_y, page.width, top)).extract_text()
-            if before and before.strip():
-                parts.append(before.strip())
-        # Text beside a table is kept instead of being lost merely because it shares
-        # the same horizontal band. Table cells themselves are filtered out.
-        band = page.crop((0, top, page.width, bottom)).filter(outside_table).extract_text()
-        if band and band.strip():
-            parts.append(band.strip())
+            before = extract_band(cursor_y, top)
+            if before:
+                parts.append(before)
+
+        # Preserve nearby prose in the table's vertical band while excluding
+        # cells from the original, un-cropped page coordinate system.
+        band = extract_band(top, bottom, outside_tables=True)
+        if band:
+            parts.append(band)
         for table in sorted(group, key=lambda item: float(item.bbox[0])):
             markdown = _table_as_markdown(table)
             if markdown:
                 parts.append(markdown)
         cursor_y = max(cursor_y, bottom)
 
-    if cursor_y < page.height:
-        # This crop starts at the last table's bottom boundary, so it contains
-        # only following page content. Avoid a redundant character filter here
-        # to preserve paragraphs consistently across pdfplumber versions.
-        after = page.crop((0, cursor_y, page.width, page.height)).extract_text()
-        if after and after.strip():
-            parts.append(after.strip())
+    if cursor_y < float(page.height):
+        after = extract_band(cursor_y, float(page.height))
+        if after:
+            parts.append(after)
     return "\n\n".join(parts).strip()
 
 
