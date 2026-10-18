@@ -367,40 +367,52 @@ def _xlsx_extract(path: Path) -> tuple[list[tuple[int, str]], list[str]]:
 
 
 def _page_text_with_tables(page: object, tables: list[object]) -> str:
-    """Interleave detected tables with prose using original page coordinates.
+    """Replace detected table rows with Markdown while retaining nearby prose.
 
-    Avoid cropping the page around tables: crop boundaries can retain characters
-    at the boundary, duplicating the last row, and filtered character coordinates
-    can vary across pdfplumber versions. Filter the original page once and merge
-    its remaining text lines with the table blocks by their original positions.
+    Compare full-page text lines with the detected table's extracted rows. This
+    avoids crop-boundary artifacts and avoids deleting captions solely because
+    their character boxes intersect a table bounding box.
     """
     if not tables:
         return (page.extract_text() or "").strip()
 
-    table_bounds = [tuple(float(value) for value in table.bbox) for table in tables]
+    def normalize_line(value: object) -> str:
+        return re.sub(r"\s+", " ", str(value or "")).strip().casefold()
 
-    def outside_table(character: dict) -> bool:
-        if character.get("object_type") != "char":
-            return True
-        center_x = (float(character.get("x0", 0)) + float(character.get("x1", 0))) / 2
-        center_y = (float(character.get("top", 0)) + float(character.get("bottom", 0))) / 2
-        return not any(
-            left <= center_x <= right and top <= center_y <= bottom
-            for left, top, right, bottom in table_bounds
-        )
-
-    events: list[tuple[float, float, int, str]] = []
-    filtered_page = page.filter(outside_table)
-    for line in filtered_page.extract_text_lines():
-        text = str(line.get("text", "")).strip()
-        if text:
-            events.append((float(line.get("top", 0)), float(line.get("x0", 0)), 0, text))
-
+    # Keep each table's original position, extracted row signatures, and Markdown.
+    # Row signatures let us suppress duplicated plain text without suppressing
+    # nearby prose that happens to lie close to the table.
+    table_info: list[tuple[float, float, float, set[str], str]] = []
     for table in tables:
+        left, top, _right, bottom = (float(value) for value in table.bbox)
+        row_signatures: set[str] = set()
+        for row in table.extract():
+            cells = [_cell_text(cell).replace("\n", " ").strip() for cell in row]
+            cells = [cell for cell in cells if cell]
+            if len(cells) >= 2:
+                signature = normalize_line(" ".join(cells))
+                if signature:
+                    row_signatures.add(signature)
         markdown = _table_as_markdown(table)
         if markdown:
-            left, top, _right, _bottom = (float(value) for value in table.bbox)
-            events.append((top, left, 1, markdown))
+            table_info.append((top, left, bottom, row_signatures, markdown))
+
+    events: list[tuple[float, float, int, str]] = []
+    for line in page.extract_text_lines():
+        text = str(line.get("text", "")).strip()
+        if not text:
+            continue
+        signature = normalize_line(text)
+        top = float(line.get("top", 0))
+        is_table_row = any(
+            signature in signatures and table_top - 8 <= top <= table_bottom + 24
+            for table_top, _left, table_bottom, signatures, _markdown in table_info
+        )
+        if not is_table_row:
+            events.append((top, float(line.get("x0", 0)), 0, text))
+
+    for top, left, _bottom, _signatures, markdown in table_info:
+        events.append((top, left, 1, markdown))
 
     events.sort(key=lambda event: (event[0], event[1], event[2]))
     parts: list[str] = []

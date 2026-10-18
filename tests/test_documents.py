@@ -278,7 +278,9 @@ def test_borderless_pdf_table_detection_keeps_rows_and_values():
     assert "| Alpha | 1,200 | 2025 |" in text
     assert "| Beta | 2,350 | 2026 |" in text
     assert "Figures are illustrative." in text
-    assert "Beta 2,350 2026" not in text.splitlines()
+    assert text.index("Products by year") < text.index("| Product |") < text.index("| Beta |") < text.index("Figures are illustrative.")
+    assert not any(line.strip() == "Beta 2,350 2026" for line in text.splitlines())
+    assert not any(line.strip() == "Product Revenue Year" for line in text.splitlines())
     assert any("tables were detected" in warning for warning in document.warnings)
 
 
