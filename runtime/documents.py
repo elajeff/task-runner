@@ -367,72 +367,61 @@ def _xlsx_extract(path: Path) -> tuple[list[tuple[int, str]], list[str]]:
 
 
 def _page_text_with_tables(page: object, tables: list[object]) -> str:
-    """Replace detected table rows with Markdown while retaining nearby prose.
-
-    Compare full-page text lines with the detected table's extracted rows. This
-    avoids crop-boundary artifacts and avoids deleting captions solely because
-    their character boxes intersect a table bounding box.
-    """
+    """Keep normal text readable while excluding table cells from the prose."""
     if not tables:
         return (page.extract_text() or "").strip()
 
-    def normalize_line(value: object) -> str:
-        return re.sub(r"\s+", " ", str(value or "")).strip().casefold()
+    table_bounds = [tuple(float(value) for value in table.bbox) for table in tables]
 
-    # Keep each table's original position, extracted row signatures, and Markdown.
-    # Row signatures let us suppress duplicated plain text without suppressing
-    # nearby prose that happens to lie close to the table.
-    table_info: list[tuple[float, float, float, set[str], str]] = []
-    for table in tables:
-        left, top, _right, bottom = (float(value) for value in table.bbox)
-        row_signatures: set[str] = set()
-        for row in table.extract():
-            cells = [_cell_text(cell).replace("\n", " ").strip() for cell in row]
-            cells = [cell for cell in cells if cell]
-            if len(cells) >= 2:
-                signature = normalize_line(" ".join(cells))
-                if signature:
-                    row_signatures.add(signature)
-        markdown = _table_as_markdown(table)
-        if markdown:
-            table_info.append((top, left, bottom, row_signatures, markdown))
-
-    events: list[tuple[float, float, int, str]] = []
-    for line in page.extract_text_lines():
-        text = str(line.get("text", "")).strip()
-        if not text:
-            continue
-        signature = normalize_line(text)
-        top = float(line.get("top", 0))
-        is_table_row = any(
-            signature in signatures and table_top - 8 <= top <= table_bottom + 24
-            for table_top, _left, table_bottom, signatures, _markdown in table_info
+    def outside_table(character: dict) -> bool:
+        if character.get("object_type") != "char":
+            return True
+        center_x = (float(character.get("x0", 0)) + float(character.get("x1", 0))) / 2
+        center_y = (float(character.get("top", 0)) + float(character.get("bottom", 0))) / 2
+        return not any(
+            left <= center_x <= right and top <= center_y <= bottom
+            for left, top, right, bottom in table_bounds
         )
-        if not is_table_row:
-            events.append((top, float(line.get("x0", 0)), 0, text))
 
-    for top, left, _bottom, _signatures, markdown in table_info:
-        events.append((top, left, 1, markdown))
-
-    events.sort(key=lambda event: (event[0], event[1], event[2]))
-    parts: list[str] = []
-    prose_lines: list[str] = []
-
-    def flush_prose() -> None:
-        if prose_lines:
-            prose = "\n".join(prose_lines).strip()
-            if prose:
-                parts.append(prose)
-            prose_lines.clear()
-
-    for _top, _left, event_type, text in events:
-        if event_type == 0:
-            prose_lines.append(text)
+    # Tables on the same vertical band (such as two side-by-side tables) are
+    # grouped so surrounding text is only extracted once.
+    groups: list[list[object]] = []
+    group_bottom = -1.0
+    for table in tables:
+        top, bottom = float(table.bbox[1]), float(table.bbox[3])
+        if not groups or top > group_bottom + 1:
+            groups.append([table])
+            group_bottom = bottom
         else:
-            flush_prose()
-            parts.append(text)
-    flush_prose()
+            groups[-1].append(table)
+            group_bottom = max(group_bottom, bottom)
+
+    parts: list[str] = []
+    cursor_y = 0.0
+    for group in groups:
+        top = min(float(table.bbox[1]) for table in group)
+        bottom = max(float(table.bbox[3]) for table in group)
+        if top > cursor_y:
+            before = page.crop((0, cursor_y, page.width, top)).filter(outside_table).extract_text()
+            if before and before.strip():
+                parts.append(before.strip())
+        # Text beside a table is kept instead of being lost merely because it shares
+        # the same horizontal band. Table cells themselves are filtered out.
+        band = page.crop((0, top, page.width, bottom)).filter(outside_table).extract_text()
+        if band and band.strip():
+            parts.append(band.strip())
+        for table in sorted(group, key=lambda item: float(item.bbox[0])):
+            markdown = _table_as_markdown(table)
+            if markdown:
+                parts.append(markdown)
+        cursor_y = max(cursor_y, bottom)
+
+    if cursor_y < page.height:
+        after = page.crop((0, cursor_y, page.width, page.height)).filter(outside_table).extract_text()
+        if after and after.strip():
+            parts.append(after.strip())
     return "\n\n".join(parts).strip()
+
 
 def _prefer_detected_tables(
     ocr_pages: list[tuple[int, str]],
@@ -472,10 +461,15 @@ def _indra_extract(path: Path) -> tuple[list[tuple[int, str]], bool]:
         converter = indra_ocr.load(threads=2, mode="auto")
         pages: list[tuple[int, str]] = []
         ocr_used = False
+        prefer_plain_text = path.suffix.lower() in IMAGE_EXTENSIONS
         for page_number, page in converter.convert(str(path), max_pages=MAX_DOCUMENT_PAGES):
-            # Markdown retains headings, lists, and table markup. Plain text drops some
-            # of that structure, especially when OCR is used on scanned documents.
-            extracted = getattr(page, "markdown", "") or getattr(page, "text", "")
+            # Images often contain aligned labels or screenshots that OCR layout
+            # detection can misclassify as tables. Prefer line-ordered text for images;
+            # keep Markdown structure for PDFs where table preservation is useful.
+            if prefer_plain_text:
+                extracted = getattr(page, "text", "") or getattr(page, "markdown", "")
+            else:
+                extracted = getattr(page, "markdown", "") or getattr(page, "text", "")
             pages.append((int(page_number), str(extracted)))
             ocr_used = ocr_used or getattr(page, "source", "") in {"ocr", "hybrid"}
         if not pages:

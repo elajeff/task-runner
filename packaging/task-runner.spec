@@ -2,7 +2,7 @@
 from pathlib import Path
 import tomllib
 
-from PyInstaller.utils.hooks import collect_all, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 from PyInstaller.utils.win32.versioninfo import (
     FixedFileInfo,
     StringFileInfo,
@@ -63,15 +63,14 @@ version_info = VSVersionInfo(
 
 datas = [(str(ICON_PATH), "assets")]
 binaries = []
-hiddenimports = collect_submodules("runtime") + collect_submodules("mistune.plugins")
+# The runtime modules and Indra OCR's lazy-loaded Python modules are not all
+# discoverable through the GUI entry point alone. Collect those modules only.
+hiddenimports = collect_submodules("runtime") + collect_submodules("indra_ocr")
+datas += collect_data_files("indra_ocr")
 
-# These packages include data or native modules that PyInstaller may not collect
-# completely through static import analysis alone.
-for package in ("pdfplumber", "docx", "openpyxl", "indra_ocr", "onnxruntime"):
-    package_data, package_binaries, package_hidden = collect_all(package)
-    datas += package_data
-    binaries += package_binaries
-    hiddenimports += package_hidden
+# Do not collect entire distributions. PyInstaller's standard hooks and import
+# analysis handle pdfplumber, python-docx, openpyxl, OpenCV, PDFium, and ONNX Runtime.
+# Indra downloads its OCR model on first use, so model weights are not bundled here.
 
 a = Analysis(
     [str(ROOT / "runtime" / "gui.py")],

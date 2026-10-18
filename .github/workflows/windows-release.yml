@@ -96,6 +96,17 @@ jobs:
           Copy-Item THIRD_PARTY_NOTICES.txt dist/task-runner/THIRD_PARTY_NOTICES.txt
           Compress-Archive -Path dist/task-runner -DestinationPath dist/task-runner-windows-x64.zip -Force
 
+      - name: Report bundled size
+        shell: pwsh
+        run: |
+          $zip = Get-Item "dist/task-runner-windows-x64.zip"
+          Write-Host ("Release ZIP size: {0:N1} MiB" -f ($zip.Length / 1MB))
+          Write-Host "Largest files in the packaged app:"
+          Get-ChildItem "dist/task-runner" -Recurse -File |
+            Sort-Object Length -Descending |
+            Select-Object -First 12 @{Name="SizeMiB";Expression={[math]::Round($_.Length / 1MB, 2)}}, FullName |
+            Format-Table -AutoSize
+
       - name: Upload Windows build artifact
         uses: actions/upload-artifact@v4
         with:
