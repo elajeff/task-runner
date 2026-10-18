@@ -367,78 +367,60 @@ def _xlsx_extract(path: Path) -> tuple[list[tuple[int, str]], list[str]]:
 
 
 def _page_text_with_tables(page: object, tables: list[object]) -> str:
-    """Keep prose around detected tables without re-reading boundary rows."""
+    """Interleave detected tables with prose using original page coordinates.
+
+    Avoid cropping the page around tables: crop boundaries can retain characters
+    at the boundary, duplicating the last row, and filtered character coordinates
+    can vary across pdfplumber versions. Filter the original page once and merge
+    its remaining text lines with the table blocks by their original positions.
+    """
     if not tables:
         return (page.extract_text() or "").strip()
 
     table_bounds = [tuple(float(value) for value in table.bbox) for table in tables]
 
-    def center(character: dict) -> tuple[float, float]:
-        return (
-            (float(character.get("x0", 0)) + float(character.get("x1", 0))) / 2,
-            (float(character.get("top", 0)) + float(character.get("bottom", 0))) / 2,
-        )
-
-    def is_outside_tables(character: dict) -> bool:
+    def outside_table(character: dict) -> bool:
         if character.get("object_type") != "char":
             return True
-        center_x, center_y = center(character)
+        center_x = (float(character.get("x0", 0)) + float(character.get("x1", 0))) / 2
+        center_y = (float(character.get("top", 0)) + float(character.get("bottom", 0))) / 2
         return not any(
             left <= center_x <= right and top <= center_y <= bottom
             for left, top, right, bottom in table_bounds
         )
 
-    def extract_band(top: float, bottom: float, *, outside_tables: bool = False) -> str:
-        """Filter the original page, not a cropped page with shifted coordinates."""
-        def in_band(item: dict) -> bool:
-            if item.get("object_type") != "char":
-                return True
-            _, center_y = center(item)
-            if not (top <= center_y < bottom):
-                return False
-            return not outside_tables or is_outside_tables(item)
+    events: list[tuple[float, float, int, str]] = []
+    filtered_page = page.filter(outside_table)
+    for line in filtered_page.extract_text_lines():
+        text = str(line.get("text", "")).strip()
+        if text:
+            events.append((float(line.get("top", 0)), float(line.get("x0", 0)), 0, text))
 
-        return (page.filter(in_band).extract_text() or "").strip()
+    for table in tables:
+        markdown = _table_as_markdown(table)
+        if markdown:
+            left, top, _right, _bottom = (float(value) for value in table.bbox)
+            events.append((top, left, 1, markdown))
 
-    # Group tables sharing a vertical band (for example, two side-by-side tables).
-    groups: list[list[object]] = []
-    group_bottom = -1.0
-    for table in sorted(tables, key=lambda item: (item.bbox[1], item.bbox[0])):
-        top, bottom = float(table.bbox[1]), float(table.bbox[3])
-        if not groups or top > group_bottom + 1:
-            groups.append([table])
-            group_bottom = bottom
-        else:
-            groups[-1].append(table)
-            group_bottom = max(group_bottom, bottom)
-
+    events.sort(key=lambda event: (event[0], event[1], event[2]))
     parts: list[str] = []
-    cursor_y = 0.0
-    for group in groups:
-        top = min(float(table.bbox[1]) for table in group)
-        bottom = max(float(table.bbox[3]) for table in group)
-        if top > cursor_y:
-            before = extract_band(cursor_y, top)
-            if before:
-                parts.append(before)
+    prose_lines: list[str] = []
 
-        # Preserve nearby prose in the table's vertical band while excluding
-        # cells from the original, un-cropped page coordinate system.
-        band = extract_band(top, bottom, outside_tables=True)
-        if band:
-            parts.append(band)
-        for table in sorted(group, key=lambda item: float(item.bbox[0])):
-            markdown = _table_as_markdown(table)
-            if markdown:
-                parts.append(markdown)
-        cursor_y = max(cursor_y, bottom)
+    def flush_prose() -> None:
+        if prose_lines:
+            prose = "\n".join(prose_lines).strip()
+            if prose:
+                parts.append(prose)
+            prose_lines.clear()
 
-    if cursor_y < float(page.height):
-        after = extract_band(cursor_y, float(page.height))
-        if after:
-            parts.append(after)
+    for _top, _left, event_type, text in events:
+        if event_type == 0:
+            prose_lines.append(text)
+        else:
+            flush_prose()
+            parts.append(text)
+    flush_prose()
     return "\n\n".join(parts).strip()
-
 
 def _prefer_detected_tables(
     ocr_pages: list[tuple[int, str]],

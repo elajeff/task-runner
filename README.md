@@ -57,7 +57,7 @@ Tests use local fixtures, temporary directories, and simulated provider response
 
 ## Build the Windows application
 
-On a Windows x64 computer with 64-bit Python 3.13 installed, double-click `packaging\build-windows.bat`. The script creates a build environment, installs the required dependencies, runs tests, and packages the app.
+On a Windows x64 computer with 64-bit Python 3.13 installed, double-click `packaging\build-windows.bat`. The script creates a build environment, installs the required dependencies, runs tests, and packages the app. The icon builder prefers `assets/task-runner-icon.png`, supports `assets/task-runner-icon.jpg` for older checkouts, and creates `assets/task-runner.ico`. Keep the chosen source image and generated `.ico` in the repository so GitHub Actions uses the same icon without downloading another copy.
 
 A successful build creates:
 
