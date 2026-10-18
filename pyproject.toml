@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "task-runner"
-version = "0.1.6"
+version = "0.1.8"
 description = "task runner: local document extraction, AI-assisted outputs, and recoverable multi-file tasks"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
@@ -25,12 +25,12 @@ task-runner-gui = "runtime.gui:main"
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 documents = [
-    "pdfplumber==0.11.9",
+    "pdfplumber>=0.11.0",
     "python-docx>=1.1.2",
     "openpyxl>=3.1.5",
 ]
 ocr = [
-    "pdfplumber==0.11.9",
+    "pdfplumber>=0.11.0",
     "python-docx>=1.1.2",
     "openpyxl>=3.1.5",
     "indra-ocr>=0.3.2,<0.4",
