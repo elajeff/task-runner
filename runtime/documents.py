@@ -402,7 +402,11 @@ def _page_text_with_tables(page: object, tables: list[object]) -> str:
         top = min(float(table.bbox[1]) for table in group)
         bottom = max(float(table.bbox[3]) for table in group)
         if top > cursor_y:
-            before = page.crop((0, cursor_y, page.width, top)).filter(outside_table).extract_text()
+            # This crop ends at the table's top boundary, so it cannot contain
+            # table cells. Avoid a redundant filter here: character coordinates
+            # from cropped pages can vary across pdfplumber releases, and this
+            # filter can incorrectly remove nearby prose.
+            before = page.crop((0, cursor_y, page.width, top)).extract_text()
             if before and before.strip():
                 parts.append(before.strip())
         # Text beside a table is kept instead of being lost merely because it shares
@@ -417,7 +421,10 @@ def _page_text_with_tables(page: object, tables: list[object]) -> str:
         cursor_y = max(cursor_y, bottom)
 
     if cursor_y < page.height:
-        after = page.crop((0, cursor_y, page.width, page.height)).filter(outside_table).extract_text()
+        # This crop starts at the last table's bottom boundary, so it contains
+        # only following page content. Avoid a redundant character filter here
+        # to preserve paragraphs consistently across pdfplumber versions.
+        after = page.crop((0, cursor_y, page.width, page.height)).extract_text()
         if after and after.strip():
             parts.append(after.strip())
     return "\n\n".join(parts).strip()

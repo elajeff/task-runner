@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "task-runner"
-version = "0.1.0"
+version = "0.1.1"
 description = "task runner: local document extraction, AI-assisted outputs, and recoverable multi-file tasks"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
