@@ -270,14 +270,37 @@ def test_pdf_extraction_detects_and_preserves_tables():
 
 
 def test_borderless_pdf_table_detection_keeps_rows_and_values():
+    import pdfplumber
+
     source = Path(__file__).parent / "fixtures" / "borderless_table.pdf"
+
+    # Validate the fixture separately from the table formatter. If this fails,
+    # the test PDF no longer contains the selectable caption this regression
+    # test is intended to preserve; changing production extraction code would
+    # not be a valid fix for missing source text.
+    with pdfplumber.open(source) as pdf:
+        page = pdf.pages[0]
+        raw_text = page.extract_text() or ""
+        positioned_lines = [line.get("text", "") for line in page.extract_text_lines()]
+
+    assert "Figures are illustrative." in raw_text, (
+        "The borderless-table fixture must contain 'Figures are illustrative.' "
+        "as selectable text. Check the fixture, not the table formatter. "
+        f"pdfplumber={pdfplumber.__version__}; extracted text={raw_text!r}"
+    )
+
     document = extract_document(source)
     text = document.text
     assert "Products by year" in text
     assert "| Product | Revenue | Year |" in text
     assert "| Alpha | 1,200 | 2025 |" in text
     assert "| Beta | 2,350 | 2026 |" in text
-    assert "Figures are illustrative." in text
+    assert "Figures are illustrative." in text, (
+        "The caption exists in the original PDF's extracted text but was lost "
+        "during table-aware extraction. "
+        f"pdfplumber={pdfplumber.__version__}; positioned lines={positioned_lines!r}; "
+        f"raw text={raw_text!r}; formatted text={text!r}"
+    )
     assert text.index("Products by year") < text.index("| Product |") < text.index("| Beta |") < text.index("Figures are illustrative.")
     assert not any(line.strip() == "Beta 2,350 2026" for line in text.splitlines())
     assert not any(line.strip() == "Product Revenue Year" for line in text.splitlines())
