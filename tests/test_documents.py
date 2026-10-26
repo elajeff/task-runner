@@ -149,25 +149,22 @@ def test_mixed_pdf_without_ocr_keeps_text_and_warns_about_unreadable_pages(tmp_p
 
 
 
-def test_table_aware_pdf_layout_is_used_when_ocr_is_also_enabled(tmp_path: Path, monkeypatch):
+def test_ocr_pdf_keeps_scanned_text_without_a_second_extraction(tmp_path: Path, monkeypatch):
     import runtime.documents as documents
 
     source = tmp_path / "report.pdf"
     source.write_bytes(b"mock pdf")
-    monkeypatch.setattr(documents, "_indra_extract", lambda _path: ([(1, "Indra text"), (2, "Scanned page text")], True))
-    monkeypatch.setattr(
-        documents,
-        "_pdfplumber_extract_pdf",
-        lambda _path: ([(1, "Report\n\n|Name|Count|\n|---|---|\n|Alpha|12|"), (2, "")], ["Table detected."]),
-    )
+    pages = [(1, "Scanned paragraph\n\n|Name|Count|\n|---|---|\n|Alpha|12|"), (2, "Scanned page text")]
+    monkeypatch.setattr(documents, "_indra_extract", lambda _path: (pages, True))
 
+    def unexpected_layout_pass(_path):
+        raise AssertionError("OCR should extract the document once")
+
+    monkeypatch.setattr(documents, "_pdfplumber_extract_pdf", unexpected_layout_pass)
     result = documents.extract_document(source, use_ocr=True)
-
-    assert result.pages[0][1].startswith("Report")
-    assert "|Alpha|12|" in result.pages[0][1]
-    assert result.pages[1][1] == "Scanned page text"
+    assert result.pages == pages
     assert result.ocr_used is True
-    assert result.warnings == ["Table detected."]
+
 
 def test_indra_ocr_uses_documented_python_api_only_when_requested(tmp_path: Path, monkeypatch):
     import sys

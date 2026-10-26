@@ -55,16 +55,7 @@ def extract_document(path: Path, *, use_ocr: bool = False) -> ExtractedDocument:
         ocr_used = False
     elif suffix == ".pdf":
         if use_ocr:
-            # Indra reads selectable text and OCRs scanned areas. If the local PDF
-            # parser finds a table, prefer that page's explicit table structure.
             pages, ocr_used = _indra_extract(path)
-            try:
-                layout_pages, table_warnings = _pdfplumber_extract_pdf(path)
-                pages = _prefer_detected_tables(pages, layout_pages)
-                warnings.extend(table_warnings)
-            except (RuntimeError, ValueError):
-                # OCR remains useful even if the supplementary layout pass fails.
-                pass
         else:
             pages, table_warnings = _pdfplumber_extract_pdf(path)
             warnings.extend(table_warnings)
@@ -421,31 +412,6 @@ def _page_text_with_tables(page: object, tables: list[object]) -> str:
         if after and after.strip():
             parts.append(after.strip())
     return "\n\n".join(parts).strip()
-
-
-def _prefer_detected_tables(
-    ocr_pages: list[tuple[int, str]],
-    layout_pages: list[tuple[int, str]],
-) -> list[tuple[int, str]]:
-    """Keep OCR's output except on pages where PDF geometry yielded a Markdown table."""
-    layout_by_page = {number: text for number, text in layout_pages}
-    merged: list[tuple[int, str]] = []
-    for number, ocr_text in ocr_pages:
-        layout_text = layout_by_page.get(number, "")
-        if layout_text and _contains_markdown_table(layout_text):
-            merged.append((number, layout_text))
-        else:
-            merged.append((number, ocr_text))
-    return merged
-
-
-def _contains_markdown_table(text: str) -> bool:
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    for index, line in enumerate(lines[:-1]):
-        separator = lines[index + 1]
-        if line.startswith("|") and "---" in separator and separator.startswith("|"):
-            return True
-    return False
 
 
 def _indra_extract(path: Path) -> tuple[list[tuple[int, str]], bool]:

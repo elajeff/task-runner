@@ -1,6 +1,7 @@
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from runtime.config import Config
 from runtime.engine import AgentRuntime
@@ -68,10 +69,21 @@ def main() -> int:
                 print(json.dumps(details, indent=2, ensure_ascii=False))
                 return 0
 
+            workspace = config.workspace
+            if args.command == "resume":
+                task = store.get_task(args.task_id)
+                if not task:
+                    print(f"Task not found: {args.task_id}", file=sys.stderr)
+                    return 1
+                if task.get("workspace_path"):
+                    workspace = Path(task["workspace_path"])
+                    if not workspace.is_dir():
+                        raise RuntimeError(f"Saved workspace does not exist: {workspace}")
+
             model = create_provider(config)
             runtime = AgentRuntime(
                 store,
-                ToolRegistry(config.workspace, approval_callback=approve_overwrite),
+                ToolRegistry(workspace, approval_callback=approve_overwrite),
                 model,
                 config.max_steps,
             )
@@ -80,9 +92,6 @@ def main() -> int:
                 print(f"Task ID: {task_id}")
             else:
                 task_id = args.task_id
-                if not store.get_task(task_id):
-                    print(f"Task not found: {task_id}", file=sys.stderr)
-                    return 1
             retry_uncertain = args.command == "resume" and args.retry_uncertain
             if retry_uncertain:
                 if not sys.stdin.isatty():
