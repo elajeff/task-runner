@@ -54,35 +54,40 @@ class TaskStore:
             """
         )
         # Migrate older databases without discarding their saved task history.
-        task_columns = {row[1] for row in self._connection.execute("PRAGMA table_info(tasks)")}
-        if "workspace_path" not in task_columns:
-            self._connection.execute("ALTER TABLE tasks ADD COLUMN workspace_path TEXT")
-        columns = {row[1] for row in self._connection.execute("PRAGMA table_info(steps)")}
-        table_sql_row = self._connection.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='steps'").fetchone()
-        table_sql = table_sql_row[0] if table_sql_row else ""
-        if "uncertain" not in table_sql:
-            # SQLite cannot alter a CHECK constraint in place. Rebuild this small
-            # table while preserving saved history and step IDs.
-            self._connection.execute("ALTER TABLE steps RENAME TO steps_legacy")
-            self._connection.execute("""CREATE TABLE steps (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-                sequence INTEGER NOT NULL,
-                tool_name TEXT NOT NULL,
-                arguments_json TEXT NOT NULL,
-                status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed', 'uncertain')),
-                result_json TEXT, error_text TEXT, created_at TEXT NOT NULL, finished_at TEXT,
-                planned_action TEXT, UNIQUE(task_id, sequence)
-            )""")
-            planned = "planned_action" if "planned_action" in columns else "NULL"
-            self._connection.execute(f"""INSERT INTO steps
-                (id, task_id, sequence, tool_name, arguments_json, status, result_json, error_text, created_at, finished_at, planned_action)
-                SELECT id, task_id, sequence, tool_name, arguments_json, status, result_json, error_text, created_at, finished_at, {planned}
-                FROM steps_legacy""")
-            self._connection.execute("DROP TABLE steps_legacy")
-        elif "planned_action" not in columns:
-            self._connection.execute("ALTER TABLE steps ADD COLUMN planned_action TEXT")
-        self._connection.commit()
+        self._connection.execute("BEGIN")
+        try:
+            task_columns = {row[1] for row in self._connection.execute("PRAGMA table_info(tasks)")}
+            if "workspace_path" not in task_columns:
+                self._connection.execute("ALTER TABLE tasks ADD COLUMN workspace_path TEXT")
+            columns = {row[1] for row in self._connection.execute("PRAGMA table_info(steps)")}
+            table_sql_row = self._connection.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='steps'").fetchone()
+            table_sql = table_sql_row[0] if table_sql_row else ""
+            if "uncertain" not in table_sql:
+                # SQLite cannot alter a CHECK constraint in place. Rebuild this small
+                # table while preserving saved history and step IDs.
+                self._connection.execute("ALTER TABLE steps RENAME TO steps_legacy")
+                self._connection.execute("""CREATE TABLE steps (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                    sequence INTEGER NOT NULL,
+                    tool_name TEXT NOT NULL,
+                    arguments_json TEXT NOT NULL,
+                    status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed', 'uncertain')),
+                    result_json TEXT, error_text TEXT, created_at TEXT NOT NULL, finished_at TEXT,
+                    planned_action TEXT, UNIQUE(task_id, sequence)
+                )""")
+                planned = "planned_action" if "planned_action" in columns else "NULL"
+                self._connection.execute(f"""INSERT INTO steps
+                    (id, task_id, sequence, tool_name, arguments_json, status, result_json, error_text, created_at, finished_at, planned_action)
+                    SELECT id, task_id, sequence, tool_name, arguments_json, status, result_json, error_text, created_at, finished_at, {planned}
+                    FROM steps_legacy""")
+                self._connection.execute("DROP TABLE steps_legacy")
+            elif "planned_action" not in columns:
+                self._connection.execute("ALTER TABLE steps ADD COLUMN planned_action TEXT")
+            self._connection.commit()
+        except Exception:
+            self._connection.rollback()
+            raise
 
     def close(self) -> None:
         if self._connection is None:
