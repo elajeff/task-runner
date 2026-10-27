@@ -66,6 +66,25 @@ def test_runtime_executes_tool_calls_and_persists_results(tmp_path: Path):
         store.close()
 
 
+def test_resume_rejects_a_different_workspace_before_replaying_a_write(tmp_path: Path):
+    original = tmp_path / "original"
+    other = tmp_path / "other"
+    original.mkdir()
+    other.mkdir()
+    model = ScriptedProvider([])
+    with TaskStore(tmp_path / "runtime.db") as store:
+        task_id = AgentRuntime(store, ToolRegistry(original), model).create_task("Save result")
+        store.add_running_step(task_id, 1, "write_text_file",
+                               {"path": "result.txt", "content": "saved action"})
+        runtime = AgentRuntime(store, ToolRegistry(other), model)
+        with pytest.raises(ValueError, match="saved folder"):
+            runtime.run(task_id, retry_uncertain=True)
+        assert not (original / "result.txt").exists()
+        assert not (other / "result.txt").exists()
+        assert store.get_running_step(task_id) is not None
+        assert model.calls == 0
+
+
 def test_running_step_requires_explicit_retry_after_restart(tmp_path: Path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()

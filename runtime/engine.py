@@ -124,6 +124,9 @@ class AgentRuntime:
             return task
         if task["status"] not in {"running", "paused", "failed"}:
             raise ValueError(f"Task cannot be resumed from status {task['status']}.")
+        saved_workspace = task.get("workspace_path")
+        if saved_workspace and Path(saved_workspace).expanduser().resolve() != self.tools.workspace:
+            raise ValueError("Task workspace differs from its saved folder. Resume using the original workspace.")
 
         self.store.set_task_status(task_id, "running")
         try:
