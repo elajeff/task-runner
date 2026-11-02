@@ -1,15 +1,22 @@
 # task runner
 
-**task runner** is a Windows desktop application for extracting text from documents, generating AI-assisted outputs, and completing custom tasks across files. It combines local document processing with optional AI tools and saves task progress for recovery after interruptions.
+A Windows desktop app that pulls the text out of documents, turns it into study material with an AI model of your choice, and runs small file tasks with an agent that is kept inside one folder.
 
-## Features
+Built with Python and Tkinter. Text extraction and OCR run on your own computer; only the AI features send text to a provider (Gemini, OpenAI, Anthropic, Ollama or any OpenAI-compatible server). Progress is saved as a job runs (agent tasks in SQLite, document jobs as checkpoint files), so an interrupted job can be resumed.
 
-- **Document extraction:** Extract text from PDFs, Word documents, spreadsheets, CSV/TSV, plain text, Markdown, and images.
-- **Local OCR:** Optionally recognize text in scanned PDFs and images. OCR runs locally; the model is downloaded when OCR is first used.
-- **AI outputs:** Generate summaries, detailed notes, definitions, and questions using a configured provider.
-- **Agent tasks:** Ask the agent to inspect, compare, or combine text files and save a result in a selected folder.
-- **Results preview:** Read formatted results in a browser or open the saved files directly.
-- **Recovery and file safeguards:** Task state is stored locally in SQLite. File operations are restricted to the selected workspace, and overwrites require approval. The agent does not run shell commands or arbitrary programs.
+![The results page for a Word document, with its headings, bullet points and table kept](docs/images/results.png)
+
+![The task runner window on the Document tools tab](docs/images/main-window.png)
+
+The results page above is real output from extracting a made-up Word document, with no AI involved.
+
+## What it does
+
+- Extracts text from PDFs, Word documents, spreadsheets, CSV/TSV, text and Markdown files and images, keeping headings, lists and tables where it can.
+- Optional local OCR for scanned PDFs and photos. The model downloads the first time you use it.
+- Generates summaries, detailed notes, key definitions and practice questions with the AI provider you configure.
+- Agent tasks: ask it to look through, compare or combine text files in a folder you pick and save the result there. It can't leave that folder, asks before overwriting anything, and can't run commands or programs.
+- Shows the results as a formatted page in your browser, next to the saved Markdown and text files.
 
 ## Download for Windows
 
