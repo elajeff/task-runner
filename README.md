@@ -8,7 +8,7 @@ Built with Python and Tkinter. Text extraction and OCR run on your own computer;
 
 ![The task runner window on the Document tools tab](docs/images/main-window.png)
 
-The results page above is real output from extracting a made-up Word document, with no AI involved.
+The results page comes from extracting a made-up Word document, without an AI provider.
 
 ## What it does
 
