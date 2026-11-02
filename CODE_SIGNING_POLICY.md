@@ -10,8 +10,6 @@ If the project is accepted and the integration is activated, the release and dow
 
 task runner is maintained as an individual open-source project. The repository maintainer is responsible for reviewing source changes, checking the Windows build and release workflow, and approving release signing requests. External contributions must be reviewed before merge. If additional maintainers are added, the repository will document which members may commit/review changes and which member(s) approve signing requests. SignPath Foundation's required access controls and multi-factor authentication will be enabled for all relevant accounts before signing is activated.
 
-Before submitting this repository publicly, replace this paragraph with named people or links to the real repository's contributor/maintainer groups if the application requires those references.
-
 ## Privacy
 
 task runner stores files, results, and task history locally. Local extraction and OCR do not send document content to an AI provider. When the user requests AI output, the relevant prompt and extracted text are sent to the provider configured by that user. task runner does not send telemetry to a task runner-operated server. The full statement is in [Privacy](PRIVACY.md).
