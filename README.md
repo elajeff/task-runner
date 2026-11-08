@@ -20,22 +20,22 @@ The results page comes from extracting a made-up Word document, without an AI pr
 
 ## Download for Windows
 
-Download the latest **Windows x64 ZIP** from [GitHub Releases](../../releases/latest). Extract the complete `task-runner` folder and run `task-runner.exe`. Keep the other files in that folder; the executable depends on the bundled files. A separate Python installation is not required.
+Download the latest **Windows x64 ZIP** from [GitHub Releases](../../releases/latest). Extract the whole `task-runner` folder and run `task-runner.exe`. Keep the other files in that folder, because the executable needs them. You don't need to install Python.
 
-Releases are unsigned unless the release notes explicitly say otherwise. Code signing details and current status are documented in [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md).
+Releases are unsigned unless the release notes say otherwise. See [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md) for the details.
 
-## Use the application
+## Using it
 
-- **Document tools:** Select a file and choose **Extract text** for local extraction. Enable OCR for scanned pages or images. Select AI outputs only when you need generated content.
-- **Results:** After processing, choose **View in browser**, **Open results folder**, or **Not now**. The results preview can be reopened later; the saved Markdown and text files are also available to copy or reuse.
-- **Agent tasks:** Describe the outcome you need and select a working folder. If filenames are unknown, ask the agent to list the available files first.
-- **Provider settings:** Configure the AI provider and credentials used for AI-generated outputs and agent tasks.
+- **Document tools:** pick a file and choose **Extract text**. Turn on OCR for scanned pages or images, and pick AI outputs only when you want generated content.
+- **Results:** after a job, choose **View in browser**, **Open results folder** or **Not now**. You can reopen the preview later, and the saved Markdown and text files are there to copy.
+- **Agent tasks:** describe what you want and pick a working folder. If you don't know the filenames, ask the agent to list the files first.
+- **Provider settings:** set up the AI provider and credentials used for AI outputs and agent tasks.
 
-Local text extraction and OCR do not send document contents to an AI provider. When an AI output or agent task reads document content, relevant text is sent to the provider configured by the user.
+Local extraction and OCR never send document contents to an AI provider. An AI output or agent task sends the relevant text to the provider you configured.
 
 ## Run from source
 
-Python 3.13 (64-bit on Windows) is recommended, particularly for optional OCR support. From the repository root, open PowerShell and run:
+Python 3.13 (64-bit) works best, mainly for the optional OCR. From the repository root in PowerShell:
 
 ```powershell
 py -3.13 -m venv .venv
@@ -44,27 +44,27 @@ py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m runtime.gui
 ```
 
-To install optional OCR dependencies:
+For the optional OCR dependencies:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -e ".[ocr]"
 ```
 
-The first OCR run may download the model and requires an internet connection. Normal selectable-text extraction does not require OCR.
+The first OCR run needs an internet connection to download the model. Normal text extraction doesn't need OCR.
 
 ## Tests
 
-Run the suite from the repository root:
+From the repository root:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-Tests use local fixtures, temporary directories, and simulated provider responses. They cover task persistence and recovery, workspace restrictions, overwrite safeguards, provider error handling, document extraction, and GUI workflows. AI-related tests do not call a live provider or consume API quota; they do not verify a real API key, live model availability, network access, or OCR quality on a particular image.
+The tests use local fixtures, temporary folders and simulated provider responses. They cover task saving and recovery, the workspace limits, the overwrite checks, provider errors, document extraction and the GUI workflows. No test calls a live AI provider or uses API quota, so they don't check a real API key, whether a model is available, the network, or OCR quality on a particular image.
 
 ## Build the Windows application
 
-On a Windows x64 computer with 64-bit Python 3.13 installed, double-click `packaging\build-windows.bat`. The script creates a build environment, installs the dependencies, runs the tests and packages the app into:
+On a 64-bit Windows computer with 64-bit Python 3.13, double-click `packaging\build-windows.bat`. It creates a build environment, installs the dependencies, runs the tests and packages the app into:
 
 - `dist\task-runner\task-runner.exe` and its supporting files.
 - `dist\task-runner-windows-x64.zip`, the bundle for distribution.
@@ -73,19 +73,30 @@ Pushing a `v*` tag runs the same build in GitHub Actions and publishes a release
 
 ## Data and configuration
 
-- `.env.example` is the tracked configuration template; it must not contain real credentials.
-- `.env` is private local configuration and is ignored by Git. The **Provider settings** page creates or updates it for a source installation.
-- Source runs store local settings, task data, and the default workspace in the project directory. The packaged Windows app uses `%LOCALAPPDATA%\task-runner` for writable data and settings.
-- `data/`, local workspace contents, environment folders, and build outputs are excluded from Git.
+- `.env.example` is the template and holds no real credentials.
+- `.env` is your private configuration and Git ignores it. When you run from source, the **Provider settings** page creates and updates it.
+- Running from source keeps settings, task data and the default workspace in the project folder. The packaged app uses `%LOCALAPPDATA%\task-runner`.
+- `data/`, the workspace contents, environment folders and build output are not in Git.
 
-See [PRIVACY.md](PRIVACY.md) for data-handling details and [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt) for dependency and model notices.
+See [PRIVACY.md](PRIVACY.md) for how data is handled and [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt) for the dependency and model notices.
+
+## Project layout
+
+| Path | Contents |
+| --- | --- |
+| `runtime/` | The app: `gui.py` (window), `documents.py` (extraction and AI outputs), `engine.py` (plans and runs agent tasks), `tools.py` (the tools the agent may use), `providers.py` (AI provider adapters), `storage.py` (SQLite task history), `results_view.py` (results page), `settings.py` and `config.py` (settings), `cli.py` (command line) |
+| `tests/` | pytest tests and fixtures |
+| `packaging/` | Windows build scripts and the PyInstaller spec |
+| `workspace/` | Example workspace for agent tasks |
+| `assets/`, `docs/` | Icons and screenshots |
+| `.github/workflows/` | The release build |
 
 ## Limitations
 
-Extraction attempts to preserve reading order, headings, paragraphs, and detected table structures; it does not reproduce the original page layout. Multi-column pages, merged or complex tables, charts, floating objects, handwriting, and poor scans may be reconstructed incorrectly. Verify important values against the source document. OCR quality depends on language/script support, image clarity, font, and layout.
-
-Agent tasks work with text files in the selected workspace. They do not execute code or shell commands.
+- Extraction tries to keep reading order, headings, paragraphs and tables, but it doesn't reproduce the page layout. Multi-column pages, merged or complex tables, charts, floating objects, handwriting and poor scans can come out wrong, so check important values against the source.
+- OCR quality depends on the language, image clarity, font and layout.
+- Agent tasks work with text files in the workspace folder. They can't run code or shell commands.
 
 ## License
 
-The source code is licensed under the [Apache License 2.0](LICENSE). Third-party packages and optional OCR model weights may have separate licenses; see [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
+Apache License 2.0 for the source code. See [LICENSE](LICENSE). Third-party packages and the optional OCR model weights can have their own licenses; see [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
