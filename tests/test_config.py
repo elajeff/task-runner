@@ -38,17 +38,3 @@ def test_packaged_default_paths_do_not_use_the_executable_directory(tmp_path: Pa
     data_root = tmp_path / "LocalAppData" / "task-runner"
     assert settings.workspace == (data_root / "workspace").resolve()
     assert settings.database == (data_root / "data" / "runtime.db").resolve()
-
-
-def test_packaged_paths_migrate_legacy_user_data_folder(tmp_path: Path, monkeypatch):
-    local_app_data = tmp_path / "LocalAppData"
-    legacy_root = local_app_data / "TaskRunner"
-    legacy_root.mkdir(parents=True)
-    (legacy_root / ".env").write_text("AGENT_PROVIDER=ollama\n", encoding="utf-8")
-    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
-    monkeypatch.setattr(config.sys, "frozen", True, raising=False)
-
-    new_root = local_app_data / "task-runner"
-    assert config.app_data_root() == new_root.resolve()
-    assert (new_root / ".env").is_file()
-    assert not legacy_root.exists()

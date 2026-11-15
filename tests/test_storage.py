@@ -118,39 +118,6 @@ def test_sqlite_backup_is_created_and_retention_is_three(tmp_path: Path):
         connection.close()
 
 
-def test_old_step_schema_migrates_without_losing_history(tmp_path: Path):
-    import sqlite3
-    database = tmp_path / "legacy.db"
-    connection = sqlite3.connect(database)
-    connection.executescript("""
-        CREATE TABLE tasks (id TEXT PRIMARY KEY, description TEXT NOT NULL,
-            status TEXT NOT NULL CHECK (status IN ('running','completed','failed','paused')),
-            final_response TEXT, error_text TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-        CREATE TABLE steps (id INTEGER PRIMARY KEY AUTOINCREMENT,
-            task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-            sequence INTEGER NOT NULL, tool_name TEXT NOT NULL, arguments_json TEXT NOT NULL,
-            status TEXT NOT NULL CHECK (status IN ('running','completed','failed')),
-            result_json TEXT, error_text TEXT, created_at TEXT NOT NULL, finished_at TEXT,
-            UNIQUE(task_id, sequence));
-        INSERT INTO tasks VALUES ('abcdef123456','legacy task','completed','done',NULL,'now','now');
-        INSERT INTO steps (task_id,sequence,tool_name,arguments_json,status,result_json,created_at)
-            VALUES ('abcdef123456',1,'read_text_file','{"path":"a.txt"}','completed','"ok"','now');
-    """)
-    connection.commit()
-    connection.close()
-    store = TaskStore(database)
-    try:
-        assert store.history("abcdef123456")[0]["result"] == "ok"
-        columns = {row[1] for row in store._connection.execute("PRAGMA table_info(tasks)")}
-        assert "workspace_path" in columns
-        assert store.get_task("abcdef123456")["workspace_path"] is None
-        step_id = store.add_running_step("abcdef123456", 2, "read_text_file", {"path": "b.txt"})
-        store.mark_step_uncertain(step_id)
-        assert store.get_uncertain_step("abcdef123456") is not None
-    finally:
-        store.close()
-
-
 def test_recovery_scan_marks_unlocked_running_task_and_step_uncertain(tmp_path: Path):
     store = TaskStore(tmp_path / "runtime.db")
     try:

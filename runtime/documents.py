@@ -487,7 +487,6 @@ def _split_sections(pages: list[tuple[int, str]], *, page_labels: bool = True) -
 # Document jobs keep their checkpoint beside the outputs so they can be resumed after
 # a normal error or application restart without a second database subsystem.
 DOCUMENT_STATE_FILENAME = ".task-runner-document.json"
-LEGACY_DOCUMENT_STATE_FILENAMES = (".task-runner-study.json", ".taskrunner-study.json")
 DOCUMENT_STATE_VERSION = 1
 OUTPUT_FILENAMES = {
     "summary": "02_AI_Results/summary.md",
@@ -497,24 +496,6 @@ OUTPUT_FILENAMES = {
     "verbatim": "01_Extracted_Text/extracted_text.md",
     "processing_notes": "03_Processing_Notes/processing_notes.md",
 }
-LEGACY_OUTPUT_FILENAMES = {
-    "summary": "summary.md",
-    "notes": "detailed_notes.md",
-    "definitions": "key_definitions.md",
-    "questions": "revision_questions.md",
-    "verbatim": "extracted_text.txt",
-    "processing_notes": "processing_notes.md",
-}
-CATEGORIZED_OUTPUT_LAYOUT_VERSION = 2
-OUTPUT_LAYOUT_VERSION = 3
-PREVIOUS_CATEGORIZED_OUTPUT_FILENAMES = {
-    "summary": "02_AI_Results/summary.md",
-    "notes": "02_AI_Results/detailed_notes.md",
-    "definitions": "02_AI_Results/key_definitions.md",
-    "questions": "02_AI_Results/questions_and_answers.md",
-    "verbatim": "01_Extracted_Text/extracted_text.txt",
-    "processing_notes": "03_Processing_Notes/processing_notes.md",
-}
 DOCUMENT_OUTPUT_LABELS = {
     "summary": "Summary",
     "notes": "Detailed notes",
@@ -522,27 +503,6 @@ DOCUMENT_OUTPUT_LABELS = {
     "questions": "Questions & answers",
     "verbatim": "Extract text",
 }
-
-
-def output_relative_path(key: str, state: dict | None = None) -> str:
-    """Return the result path for this job's layout version."""
-    state = state or {}
-    try:
-        layout_version = int(state.get("output_layout_version", 1))
-    except (TypeError, ValueError):
-        layout_version = 1
-
-    if layout_version >= OUTPUT_LAYOUT_VERSION:
-        return OUTPUT_FILENAMES[key]
-    if layout_version >= CATEGORIZED_OUTPUT_LAYOUT_VERSION:
-        if key == "verbatim" and state.get("use_ocr"):
-            return "01_Extracted_Text/extracted_text.md"
-        return PREVIOUS_CATEGORIZED_OUTPUT_FILENAMES[key]
-
-    filename = LEGACY_OUTPUT_FILENAMES[key]
-    if key == "verbatim" and state.get("use_ocr"):
-        return "extracted_text.md"
-    return filename
 
 
 def _write_json_atomically(path: Path, value: dict) -> None:
@@ -557,18 +517,6 @@ def _write_json_atomically(path: Path, value: dict) -> None:
     os.replace(temporary, path)
 
 
-def _document_state_path(job_dir: Path) -> Path:
-    """Find the current checkpoint or one of the older filenames."""
-    current = job_dir / DOCUMENT_STATE_FILENAME
-    if current.is_file():
-        return current
-    for legacy_name in LEGACY_DOCUMENT_STATE_FILENAMES:
-        legacy = job_dir / legacy_name
-        if legacy.is_file():
-            return legacy
-    return current
-
-
 def _save_document_state(job_dir: Path, state: dict) -> None:
     state["updated_at"] = datetime.now(timezone.utc).isoformat()
     _write_json_atomically(job_dir / DOCUMENT_STATE_FILENAME, state)
@@ -577,9 +525,8 @@ def _save_document_state(job_dir: Path, state: dict) -> None:
 def load_document_job(job_dir: Path) -> dict:
     """Read and minimally validate a saved document-job checkpoint."""
     job_dir = Path(job_dir).expanduser().resolve()
-    state_path = _document_state_path(job_dir)
     try:
-        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state = json.loads((job_dir / DOCUMENT_STATE_FILENAME).read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
         raise ValueError("This folder does not contain a saved task runner document job.") from exc
     except (OSError, json.JSONDecodeError) as exc:
@@ -612,7 +559,6 @@ def create_document_job(source: Path, selected: list[str], use_ocr: bool, output
     now = datetime.now(timezone.utc).isoformat()
     state = {
         "version": DOCUMENT_STATE_VERSION,
-        "output_layout_version": OUTPUT_LAYOUT_VERSION,
         "source": str(source),
         "source_size": stat.st_size,
         "source_mtime_ns": stat.st_mtime_ns,
@@ -641,10 +587,7 @@ def list_resumable_document_jobs(output_root: Path) -> list[dict]:
         return []
     jobs: list[dict] = []
     for job_dir in output_root.iterdir():
-        if not job_dir.is_dir() or not any(
-            (job_dir / filename).is_file()
-            for filename in (DOCUMENT_STATE_FILENAME, *LEGACY_DOCUMENT_STATE_FILENAMES)
-        ):
+        if not (job_dir / DOCUMENT_STATE_FILENAME).is_file():
             continue
         try:
             state = load_document_job(job_dir)
@@ -708,7 +651,7 @@ def process_document_job(
 ) -> Path:
     """Run or resume a document job, preventing two GUI instances from processing it at once."""
     job_dir = Path(job_dir).expanduser().resolve()
-    lock = FileLock(str(job_dir / ".taskrunner-study.lock"), timeout=0)
+    lock = FileLock(str(job_dir / ".task-runner-document.lock"), timeout=0)
     try:
         with lock:
             return _process_document_job_locked(job_dir, generate_json, progress, extract_fn=extract_fn)
@@ -826,7 +769,7 @@ def _process_document_job_locked(
         if progress:
             progress("Saving selected outputs…")
         for key, content in outputs.items():
-            filename = output_relative_path(key, state)
+            filename = OUTPUT_FILENAMES[key]
             _write_job_output(job_dir, filename, content)
             written = set(state.get("written_outputs", []))
             written.add(filename)
@@ -840,11 +783,6 @@ def _process_document_job_locked(
         state["current_section"] = None
         state["completed_at"] = datetime.now(timezone.utc).isoformat()
         _save_document_state(job_dir, state)
-        # Older releases created a text index; new results use the formatted preview.
-        try:
-            (job_dir / "START_HERE.txt").unlink()
-        except FileNotFoundError:
-            pass
         if progress:
             progress("Document outputs saved.")
         return job_dir
