@@ -2,93 +2,30 @@
 
 from __future__ import annotations
 
-from io import BytesIO
 from pathlib import Path
-from urllib.error import URLError
-from urllib.request import Request, urlopen
 
 from PIL import Image, ImageOps
 
 ROOT = Path(__file__).resolve().parent.parent
-ASSET_DIR = ROOT / "assets"
-PNG_SOURCE = ASSET_DIR / "task-runner-icon.png"
-JPG_SOURCE = ASSET_DIR / "task-runner-icon.jpg"
-ICON_FILE = ASSET_DIR / "task-runner.ico"
-IMAGE_URL = "https://i.imgur.com/rgNSMeV.jpg"
-MAX_IMAGE_BYTES = 12 * 1024 * 1024
+PNG_SOURCE = ROOT / "assets" / "task-runner-icon.png"
+ICON_FILE = ROOT / "assets" / "task-runner.ico"
 ICON_SIZES = (16, 24, 32, 48, 64, 128, 256)
 
 
-def _download_source_image() -> bytes:
-    request = Request(
-        IMAGE_URL,
-        headers={"User-Agent": "task-runner-icon-builder/1.0"},
-    )
-    try:
-        with urlopen(request, timeout=30) as response:
-            content_type = response.headers.get("Content-Type", "").lower()
-            image_data = response.read(MAX_IMAGE_BYTES + 1)
-    except (OSError, URLError, TimeoutError) as exc:
-        raise RuntimeError(
-            f"Could not download the task runner icon from {IMAGE_URL}. "
-            "Check the connection, or save the image manually as "
-            "assets/task-runner-icon.png (preferred) or "
-            "assets/task-runner-icon.jpg, then run the build again."
-        ) from exc
-
-    if len(image_data) > MAX_IMAGE_BYTES:
-        raise RuntimeError("The app icon image is larger than 12 MB.")
-    try:
-        with Image.open(BytesIO(image_data)) as image:
-            image.verify()
-    except Exception as exc:
-        raise RuntimeError(
-            f"The URL did not return image data (received {content_type or 'an unknown content type'}). "
-            "Open the image in your browser and save the actual image as "
-            "assets/task-runner-icon.png, then run the build again."
-        ) from exc
-    return image_data
-
-
-def _source_image_path() -> Path:
-    """Prefer the supplied PNG; retain JPG support for older checkouts."""
-    if PNG_SOURCE.is_file():
-        return PNG_SOURCE
-    if JPG_SOURCE.is_file():
-        return JPG_SOURCE
-
-    JPG_SOURCE.write_bytes(_download_source_image())
-    return JPG_SOURCE
-
-
 def prepare_icon() -> Path:
-    ASSET_DIR.mkdir(parents=True, exist_ok=True)
-    source_image = _source_image_path()
-
-    try:
-        with Image.open(source_image) as image:
-            image.load()
-            # Keep PNG transparency so transparent icon backgrounds stay transparent.
-            image = ImageOps.exif_transpose(image).convert("RGBA")
-            icon_image = ImageOps.fit(
-                image,
-                (256, 256),
-                method=Image.Resampling.LANCZOS,
-                centering=(0.5, 0.5),
-            )
-            icon_image.save(
-                ICON_FILE,
-                format="ICO",
-                sizes=[(size, size) for size in ICON_SIZES],
-            )
-    except Exception as exc:
-        raise RuntimeError(
-            f"Could not convert {source_image} into a Windows icon. "
-            "Use a valid PNG or JPG at assets/task-runner-icon.png or "
-            "assets/task-runner-icon.jpg and retry."
-        ) from exc
-
-    print(f"App icon source: {source_image}")
+    with Image.open(PNG_SOURCE) as image:
+        # Keep PNG transparency so transparent icon backgrounds stay transparent.
+        icon_image = ImageOps.fit(
+            image.convert("RGBA"),
+            (256, 256),
+            method=Image.Resampling.LANCZOS,
+            centering=(0.5, 0.5),
+        )
+        icon_image.save(
+            ICON_FILE,
+            format="ICO",
+            sizes=[(size, size) for size in ICON_SIZES],
+        )
     print(f"Windows icon created: {ICON_FILE}")
     return ICON_FILE
 
