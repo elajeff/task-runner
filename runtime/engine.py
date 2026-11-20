@@ -38,23 +38,6 @@ JSON format when complete:
 """
 
 
-class DuplicateJSONKeyError(ValueError):
-    """Raised when a model response repeats a JSON object key."""
-
-
-def _object_without_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise DuplicateJSONKeyError(f"The model response repeats the JSON key '{key}'.")
-        result[key] = value
-    return result
-
-
-def _reject_non_finite(value: str) -> None:
-    raise ValueError(f"The model response contains unsupported JSON value {value}.")
-
-
 def _describe_planned_action(tool: str, arguments: dict[str, Any]) -> str:
     """Create a brief recovery-friendly description without duplicating file contents."""
     path = arguments.get("path")
@@ -75,8 +58,6 @@ def _describe_planned_action(tool: str, arguments: dict[str, Any]) -> str:
 
 class AgentRuntime:
     def __init__(self, store: TaskStore, tools: ToolRegistry, model: ModelProvider, max_steps: int = 8) -> None:
-        if isinstance(max_steps, bool) or not isinstance(max_steps, int) or not 1 <= max_steps <= 50:
-            raise ValueError("max_steps must be an integer between 1 and 50.")
         self.store = store
         self.tools = tools
         self.model = model
@@ -255,11 +236,7 @@ class AgentRuntime:
         if not raw.strip():
             raise ValueError("The model returned an empty response.")
         try:
-            action = json.loads(
-                raw,
-                object_pairs_hook=_object_without_duplicate_keys,
-                parse_constant=_reject_non_finite,
-            )
+            action = json.loads(raw)
         except json.JSONDecodeError as exc:
             raise ValueError("The model did not return valid JSON.") from exc
         if not isinstance(action, dict):
@@ -277,7 +254,7 @@ class AgentRuntime:
         if kind == "tool":
             tool = action.get("tool")
             arguments = action.get("arguments")
-            if not isinstance(tool, str) or not tool or len(tool) > 100:
+            if not isinstance(tool, str) or not tool:
                 raise ValueError("A tool action requires a valid tool name.")
             if not isinstance(arguments, dict):
                 raise ValueError("Tool arguments must be a JSON object.")

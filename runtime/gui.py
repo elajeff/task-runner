@@ -453,9 +453,6 @@ class RuntimeWindow:
     def process_document(self, mode: str) -> None:
         if self.busy:
             return
-        if mode not in {"local", "ai"}:
-            raise ValueError(f"Unknown document processing mode: {mode}")
-
         source_text = self.document_path_var.get().strip()
         if mode == "local":
             selected = ["verbatim"]
@@ -972,17 +969,15 @@ class RuntimeWindow:
         self.run_button.configure(state=state)
         self.resume_button.configure(state=state)
         self.save_button.configure(state=state)
-        if hasattr(self, "open_workspace_button"):
-            self.open_workspace_button.configure(state=state)
-            self.choose_workspace_button.configure(state=state)
-            self.default_workspace_button.configure(state=state)
+        self.open_workspace_button.configure(state=state)
+        self.choose_workspace_button.configure(state=state)
+        self.default_workspace_button.configure(state=state)
         self.local_button.configure(state=state)
         self.ai_button.configure(state=state)
         self.resume_document_button.configure(state=state)
-        if hasattr(self, "open_results_button"):
-            self.open_results_button.configure(state=state)
-            self.view_results_button.configure(state=state)
-            self.browse_results_button.configure(state=state)
+        self.open_results_button.configure(state=state)
+        self.view_results_button.configure(state=state)
+        self.browse_results_button.configure(state=state)
 
     def _poll_events(self) -> None:
         try:

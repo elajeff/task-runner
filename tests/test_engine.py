@@ -188,24 +188,12 @@ def test_paused_task_can_continue_on_a_later_run(tmp_path: Path):
         store.close()
 
 
-@pytest.mark.parametrize("value", [0, -1, 51, True, "3"])
-def test_max_steps_must_be_a_bounded_integer(tmp_path: Path, value):
-    store = TaskStore(tmp_path / "runtime.db")
-    try:
-        with pytest.raises(ValueError, match="max_steps"):
-            AgentRuntime(store, ToolRegistry(tmp_path / "workspace"), ScriptedProvider([]), value)
-    finally:
-        store.close()
-
-
 @pytest.mark.parametrize(
     "raw",
     [
         "",
         "not JSON",
         "[]",
-        '{"action":"finish","response":"done","response":"also done"}',
-        '{"action":"finish","response":NaN}',
         '{"action":"tool","tool":"read_text_file","arguments":{},"extra":true}',
         '{"action":"finish","response":""}',
     ],

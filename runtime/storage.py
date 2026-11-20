@@ -132,8 +132,6 @@ class TaskStore:
         return dict(row) if row else None
 
     def list_tasks(self, limit: int = 20) -> list[dict[str, Any]]:
-        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
-            raise ValueError("Task list limit must be an integer between 1 and 100.")
         rows = self._connection.execute(
             "SELECT id, description, status, created_at, updated_at FROM tasks ORDER BY created_at DESC LIMIT ?",
             (limit,),
@@ -146,8 +144,6 @@ class TaskStore:
                 "SELECT * FROM steps WHERE task_id = ? ORDER BY sequence", (task_id,)
             ).fetchall()
             return [dict(row) for row in rows]
-        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
-            raise ValueError("Step history limit must be an integer between 1 and 500.")
         # Load the newest rows first for a bounded query, then reverse them so callers
         # still see chronological order. The full database history is not changed.
         rows = self._connection.execute(

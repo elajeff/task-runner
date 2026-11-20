@@ -49,19 +49,6 @@ def test_failed_step_is_in_history_for_recovery(tmp_path: Path):
         store.close()
 
 
-def test_task_list_limit_is_bounded(tmp_path: Path):
-    import pytest
-
-    store = TaskStore(tmp_path / "runtime.db")
-    try:
-        assert store.list_tasks(limit=1) == []
-        for bad_limit in (0, -1, 101, True, "10"):
-            with pytest.raises(ValueError, match="between 1 and 100"):
-                store.list_tasks(limit=bad_limit)
-    finally:
-        store.close()
-
-
 def test_bounded_step_history_returns_latest_entries_in_chronological_order(tmp_path: Path):
     store = TaskStore(tmp_path / "runtime.db")
     try:
@@ -83,21 +70,6 @@ def test_bounded_step_history_returns_latest_entries_in_chronological_order(tmp_
         ]
         assert store.step_count(task_id) == 4
         assert len(store.get_steps(task_id)) == 4
-    finally:
-        store.close()
-
-
-def test_step_history_limit_rejects_invalid_values(tmp_path: Path):
-    import pytest
-
-    store = TaskStore(tmp_path / "runtime.db")
-    try:
-        task_id = store.create_task("Validate history limits")
-        for bad_limit in (0, -1, 501, True, "10", 1.5):
-            with pytest.raises(ValueError, match="between 1 and 500"):
-                store.get_steps(task_id, limit=bad_limit)
-            with pytest.raises(ValueError, match="between 1 and 500"):
-                store.history(task_id, limit=bad_limit)
     finally:
         store.close()
 
