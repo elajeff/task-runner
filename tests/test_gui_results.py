@@ -30,7 +30,7 @@ def test_open_latest_results_opens_exact_run_folder(tmp_path: Path, monkeypatch)
     window = _window(tmp_path)
     run_folder = tmp_path / "document_outputs" / "report_run"
     run_folder.mkdir(parents=True)
-    (run_folder / "START_HERE.txt").write_text("results", encoding="utf-8")
+    (run_folder / ".task-runner-document.json").write_text("{}", encoding="utf-8")
     window.last_document_dir = run_folder
     opened = []
     monkeypatch.setattr(gui, "_open_directory", lambda path: opened.append(path))
@@ -45,7 +45,7 @@ def test_browse_all_results_opens_parent_folder(tmp_path: Path, monkeypatch):
     output_root = tmp_path / "document_outputs"
     run_folder = output_root / "report_run"
     run_folder.mkdir(parents=True)
-    (run_folder / "START_HERE.txt").write_text("results", encoding="utf-8")
+    (run_folder / ".task-runner-document.json").write_text("{}", encoding="utf-8")
     opened = []
     monkeypatch.setattr(gui, "_open_directory", lambda path: opened.append(path))
 
@@ -100,24 +100,6 @@ def test_view_latest_results_builds_and_opens_formatted_preview(tmp_path: Path, 
 
     assert opened == [run_folder / "results.html"]
     assert (run_folder / "results.html").is_file()
-
-
-def test_startup_cleanup_removes_old_index_only_from_known_document_jobs(tmp_path: Path):
-    recognized = tmp_path / "document_outputs" / "recognized_job"
-    recognized.mkdir(parents=True)
-    (recognized / ".task-runner-document.json").write_text("{}", encoding="utf-8")
-    old_index = recognized / "START_HERE.txt"
-    old_index.write_text("Old generated guide", encoding="utf-8")
-
-    unrelated = tmp_path / "document_outputs" / "unrelated_folder"
-    unrelated.mkdir(parents=True)
-    unrelated_index = unrelated / "START_HERE.txt"
-    unrelated_index.write_text("A user's file", encoding="utf-8")
-
-    gui.RuntimeWindow._remove_legacy_result_indexes(tmp_path)
-
-    assert not old_index.exists()
-    assert unrelated_index.read_text(encoding="utf-8") == "A user's file"
 
 
 @pytest.mark.parametrize(

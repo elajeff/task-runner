@@ -18,7 +18,7 @@ from dotenv import dotenv_values
 from runtime.config import Config, app_data_root, env_file_path
 from runtime.engine import AgentRuntime
 from runtime.documents import (
-    DOCUMENT_OUTPUT_LABELS, SUPPORTED_DOCUMENT_EXTENSIONS, SUPPORTED_DOCUMENT_LABEL,
+    DOCUMENT_OUTPUT_LABELS, DOCUMENT_STATE_FILENAME, SUPPORTED_DOCUMENT_EXTENSIONS, SUPPORTED_DOCUMENT_LABEL,
     IMAGE_EXTENSIONS, create_document_job, list_resumable_document_jobs,
     load_document_job, process_document_job,
 )
@@ -85,17 +85,8 @@ class RuntimeWindow:
         self._populate_provider_form(self.active_provider)
         self._show_provider_fields()
         # Document results always stay under task runner's own workspace, even when
-        # the user selects another project folder for Agent tasks. Check the active
-        # folder as well for older runs created before this separation.
-        self._remove_legacy_result_indexes(self.document_workspace, workspace_dir)
+        # the user selects another project folder for Agent tasks.
         self.last_document_dir = self._find_latest_document_dir(self.document_workspace)
-        if workspace_dir != self.document_workspace:
-            older_results = self._find_latest_document_dir(workspace_dir)
-            if older_results and (
-                self.last_document_dir is None
-                or older_results.stat().st_mtime > self.last_document_dir.stat().st_mtime
-            ):
-                self.last_document_dir = older_results
         self.refresh_tasks()
         self._poll_events()
         self.root.after(2000, self._periodic_refresh)
@@ -496,61 +487,16 @@ class RuntimeWindow:
         self._start_document_worker(job_dir)
 
     @staticmethod
-    def _remove_legacy_result_indexes(*workspaces: Path) -> None:
-        """Remove obsolete START_HERE files only from recognizable saved document jobs."""
-        state_markers = (
-            ".task-runner-document.json",
-            ".task-runner-study.json",
-            ".taskrunner-study.json",
-        )
-        roots_seen: set[Path] = set()
-        for workspace in workspaces:
-            if not workspace:
-                continue
-            for folder_name in ("document_outputs", "study_outputs"):
-                output_root = Path(workspace) / folder_name
-                if output_root in roots_seen:
-                    continue
-                roots_seen.add(output_root)
-                try:
-                    folders = list(output_root.iterdir())
-                except OSError:
-                    continue
-                for folder in folders:
-                    legacy_index = folder / "START_HERE.txt"
-                    if not folder.is_dir() or not legacy_index.is_file():
-                        continue
-                    if not any((folder / marker).is_file() for marker in state_markers):
-                        continue
-                    try:
-                        legacy_index.unlink()
-                    except OSError:
-                        # A locked file should not prevent the application from starting.
-                        continue
-
-    @staticmethod
     def _find_latest_document_dir(workspace: Path | None) -> Path | None:
         if workspace is None:
             return None
-        candidates: list[Path] = []
-        for folder_name in ("document_outputs", "study_outputs"):
-            output_root = workspace / folder_name
-            try:
-                for child in output_root.iterdir():
-                    if child.is_dir() and (
-                        (child / "START_HERE.txt").is_file()
-                        or any(
-                            (child / marker).is_file()
-                            for marker in (
-                                ".task-runner-document.json",
-                                ".task-runner-study.json",
-                                ".taskrunner-study.json",
-                            )
-                        )
-                    ):
-                        candidates.append(child)
-            except OSError:
-                continue
+        try:
+            candidates = [
+                child for child in (workspace / "document_outputs").iterdir()
+                if (child / DOCUMENT_STATE_FILENAME).is_file()
+            ]
+        except OSError:
+            return None
         if not candidates:
             return None
         try:
@@ -627,19 +573,13 @@ class RuntimeWindow:
 
     def browse_all_results(self) -> None:
         """Open the directory containing document-run folders, when results exist."""
-        roots = [
-            self.document_workspace / "document_outputs",
-            self.document_workspace / "study_outputs",  # compatibility with earlier versions
-        ]
+        folder = self.document_workspace / "document_outputs"
         try:
-            existing_roots = [
-                root for root in roots
-                if root.is_dir() and any(child.is_dir() for child in root.iterdir())
-            ]
+            has_results = folder.is_dir() and any(child.is_dir() for child in folder.iterdir())
         except OSError as exc:
             messagebox.showerror("Could not inspect results folder", str(exc), parent=self.root)
             return
-        if not existing_roots:
+        if not has_results:
             messagebox.showinfo(
                 "No document results yet",
                 f"No results yet. Choose a file ({SUPPORTED_DOCUMENT_LABEL}) and use Extract text or "
@@ -647,9 +587,6 @@ class RuntimeWindow:
                 parent=self.root,
             )
             return
-        # Prefer the current folder layout. Fall back to the legacy folder if that's
-        # where a user's older results are stored.
-        folder = existing_roots[0]
         try:
             _open_directory(folder)
         except OSError as exc:
@@ -659,15 +596,7 @@ class RuntimeWindow:
         if self.busy:
             return
         try:
-            config = Config.from_environment()
-            jobs = []
-            # New document outputs live in task runner's own workspace; also inspect the
-            # active folder to preserve compatibility with jobs from older versions.
-            workspaces = list(dict.fromkeys([self.document_workspace, config.workspace]))
-            for workspace in workspaces:
-                for folder_name in ("document_outputs", "study_outputs"):
-                    jobs.extend(list_resumable_document_jobs(workspace / folder_name))
-            jobs.sort(key=lambda job: job.get("updated_at", ""), reverse=True)
+            jobs = list_resumable_document_jobs(self.document_workspace / "document_outputs")
         except Exception as exc:
             messagebox.showerror("Could not inspect saved jobs", _friendly_error(exc), parent=self.root)
             return
@@ -882,14 +811,6 @@ class RuntimeWindow:
                 messagebox.showerror("Task not found", "The selected task no longer exists.", parent=self.root)
                 return
             saved_workspace = task.get("workspace_path")
-            if not saved_workspace and not messagebox.askyesno(
-                "Working folder not recorded",
-                "This task was created by an older version and does not save its working folder. "
-                "It will use the current folder shown in Agent tasks:\n\n"
-                f"{config.workspace}\n\nResume using this folder?",
-                parent=self.root,
-            ):
-                return
             if saved_workspace and not Path(saved_workspace).is_dir():
                 messagebox.showerror(
                     "Working folder not found",

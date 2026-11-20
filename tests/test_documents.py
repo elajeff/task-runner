@@ -110,7 +110,6 @@ def test_ocr_warning_is_separate_from_exact_verbatim_extraction(tmp_path: Path):
     notes = (job_dir / "03_Processing_Notes" / "processing_notes.md").read_text(encoding="utf-8")
     assert "OCR was used" in notes
     assert "OCR was used" not in (job_dir / "01_Extracted_Text" / "extracted_text.md").read_text(encoding="utf-8")
-    assert not (job_dir / "START_HERE.txt").exists()
     assert (job_dir / "01_Extracted_Text" / "extracted_text.md").is_file()
     assert (job_dir / "03_Processing_Notes" / "processing_notes.md").is_file()
 
@@ -327,52 +326,6 @@ def test_local_ocr_output_uses_markdown_extension_for_table_layout(tmp_path: Pat
     assert "项目" in saved_text
 
 
-def test_older_document_job_keeps_its_flat_output_paths(tmp_path: Path):
-    from runtime.documents import create_document_job, load_document_job, process_document_job, _save_document_state
-
-    source = tmp_path / "old-notes.txt"
-    source.write_text("A small source document.", encoding="utf-8")
-    job_dir = create_document_job(source, ["summary"], False, tmp_path / "document_outputs")
-    state = load_document_job(job_dir)
-    state.pop("output_layout_version")
-    _save_document_state(job_dir, state)
-
-    process_document_job(job_dir, lambda _prompt: json.dumps({"summary": "An old-layout result."}))
-    assert (job_dir / "summary.md").read_text(encoding="utf-8") == "An old-layout result."
-    assert not (job_dir / "START_HERE.txt").exists()
-    assert not (job_dir / "02_AI_Results" / "summary.md").exists()
-
-
-@pytest.mark.parametrize(
-    ("suffix", "use_ocr", "expected_relative"),
-    [
-        (".txt", False, "01_Extracted_Text/extracted_text.txt"),
-        (".png", True, "01_Extracted_Text/extracted_text.md"),
-    ],
-)
-def test_categorized_v2_job_keeps_its_original_text_extension(
-    tmp_path: Path, suffix: str, use_ocr: bool, expected_relative: str,
-):
-    from runtime.documents import (
-        ExtractedDocument, _save_document_state, create_document_job, load_document_job,
-        process_document_job,
-    )
-
-    source = tmp_path / f"older{suffix}"
-    source.write_text("Older source.", encoding="utf-8") if suffix == ".txt" else source.write_bytes(b"mock image")
-    job_dir = create_document_job(source, ["verbatim"], use_ocr, tmp_path / "document_outputs")
-    state = load_document_job(job_dir)
-    state["output_layout_version"] = 2
-    _save_document_state(job_dir, state)
-
-    def fake_extract(path: Path, *, use_ocr: bool = False) -> ExtractedDocument:
-        return ExtractedDocument(path, [(1, "Recovered older job.")], ocr_used=use_ocr)
-
-    process_document_job(job_dir, None, extract_fn=fake_extract)
-    assert (job_dir / expected_relative).is_file()
-    assert not (job_dir / "START_HERE.txt").exists()
-
-
 def test_pdf_table_extraction_writes_markdown_and_keeps_surrounding_text(tmp_path: Path):
     from runtime.documents import create_document_job, process_document_job
 
@@ -386,7 +339,6 @@ def test_pdf_table_extraction_writes_markdown_and_keeps_surrounding_text(tmp_pat
     assert "| Product | Revenue | Year |" in text
     assert "| Alpha | 1,200 | 2025 |" in text
     assert "End of report." in text
-    assert not (job_dir / "START_HERE.txt").exists()
 
 
 
@@ -446,37 +398,3 @@ def test_xlsx_keeps_sheet_names_zero_values_and_cell_rows(tmp_path: Path):
     assert "| Item | Amount |" in text
     assert "| Unassigned | 0 |" in text
     assert any("Excel cell values" in warning for warning in extracted.warnings)
-
-
-def test_legacy_document_checkpoint_is_still_loadable(tmp_path: Path):
-    import json
-    from runtime.documents import load_document_job, list_resumable_document_jobs
-
-    output_root = tmp_path / "outputs"
-    job_dir = output_root / "old_job"
-    job_dir.mkdir(parents=True)
-    legacy_state = {
-        "version": 1, "source": str(tmp_path / "old.txt"), "selected": ["verbatim"],
-        "status": "pending", "updated_at": "2026-01-01T00:00:00+00:00",
-    }
-    (job_dir / ".taskrunner-study.json").write_text(json.dumps(legacy_state), encoding="utf-8")
-
-    assert load_document_job(job_dir)["status"] == "pending"
-    resumable = list_resumable_document_jobs(output_root)
-    assert len(resumable) == 1
-    assert resumable[0]["job_dir"] == str(job_dir.resolve())
-
-
-def test_legacy_start_here_file_is_removed_when_job_completes(tmp_path: Path):
-    from runtime.documents import create_document_job, process_document_job
-
-    source = tmp_path / "notes.txt"
-    source.write_text("A short note.", encoding="utf-8")
-    job_dir = create_document_job(source, ["verbatim"], False, tmp_path / "document_outputs")
-    legacy_index = job_dir / "START_HERE.txt"
-    legacy_index.write_text("Old instructions", encoding="utf-8")
-
-    process_document_job(job_dir, None)
-
-    assert not legacy_index.exists()
-    assert (job_dir / "01_Extracted_Text" / "extracted_text.md").is_file()

@@ -7,7 +7,7 @@ from html import escape, unescape
 from html.parser import HTMLParser
 from pathlib import Path
 
-from runtime.documents import DOCUMENT_OUTPUT_LABELS, load_document_job, output_relative_path
+from runtime.documents import DOCUMENT_OUTPUT_LABELS, OUTPUT_FILENAMES, load_document_job
 
 RESULTS_PAGE_FILENAME = "results.html"
 _OUTPUT_ORDER = ("verbatim", "summary", "notes", "definitions", "questions", "processing_notes")
@@ -166,8 +166,7 @@ def build_results_page(job_dir: Path) -> Path | None:
     for key in _OUTPUT_ORDER:
         if key != "processing_notes" and key not in selected:
             continue
-        relative = output_relative_path(key, state)
-        source_path = job_dir / relative
+        source_path = job_dir / OUTPUT_FILENAMES[key]
         if not source_path.is_file():
             continue
         label = "Processing notes" if key == "processing_notes" else DOCUMENT_OUTPUT_LABELS[key]

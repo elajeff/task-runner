@@ -19,22 +19,11 @@ DEFAULT_MODELS = {
 
 
 def app_data_root() -> Path:
-    """Return writable app data, migrating files from the previous app name once."""
+    """Return the writable app data folder: LocalAppData when packaged, the project otherwise."""
     if getattr(sys, "frozen", False):
         local_app_data = os.environ.get("LOCALAPPDATA")
         base = Path(local_app_data) if local_app_data else Path.home() / "AppData" / "Local"
-        current = base / "task-runner"
-        legacy_paths = (base / "Task-Runner", base / "TaskRunner")
-        if not current.exists():
-            for legacy in legacy_paths:
-                if legacy.is_dir():
-                    try:
-                        legacy.rename(current)
-                    except OSError:
-                        # Keep using existing data if Windows has a lock or permission issue.
-                        return legacy.resolve()
-                    break
-        return current.resolve()
+        return (base / "task-runner").resolve()
     return PROJECT_ROOT
 
 
